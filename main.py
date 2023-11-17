@@ -35,9 +35,8 @@ def find_least_conflicting_state(domain, fault_node):
         set_standard_evidence_conflict(domain)
         fault_node.select_state(state)
         domain.propagate()
-        current_conflict = domain.get_conflict()
+        current_conflict = np.round(domain.get_conflict(),2)
         domain.initialize()
-
         if current_conflict < min_conflict:
             min_conflict = current_conflict
             least_conflicting_state = [fault_node.get_name(), fault_node.get_state_label(state)]
@@ -48,9 +47,11 @@ def set_standard_evidence_conflict(domain):
     """Set standard evidence for the domain."""
     evidence_values = {
         "PressureT1": 101000,
-        "Nitrogen_flow": 0,
+        # Here we creat an issue with the nitrogen flow beeing 0.
+        "Nitrogen_flow":0,
         # If auto is 1 it will detect first a control fault. If it 0 will detect valve fault
         "Auto":1,
+        # We select the Primary systeme
         "Systeme": 1
     }
     for node_name, value in evidence_values.items():
@@ -93,53 +94,6 @@ def find_best_decision(domain, decision_nodes):
 
     return(L_best_decision)
 
-
-# Main Execution - Conflict Detection
-#
-
-conflict_model_name = "model_Conflict"
-conflict_cc_name = f"C:\\Users\\jomie\\Documents\\GitHub\\Code_Journal_processes\\{conflict_model_name}.net"
-
-conflict_dom = Domain.parse_domain(conflict_cc_name )
-
-conflict_dom.compile()
-
-fault_node = conflict_dom.get_node_by_name("Fault")
-least_conflicting_state = find_least_conflicting_state(conflict_dom, fault_node)
-#print(least_conflicting_state)
-
-conflict_dom.delete()
-
-#
-# Main Execution - Decision Making
-
-
-#
-
-decision_model_name = "DID"
-decision_cc_name = f"C:\\Users\\jomie\\Documents\\GitHub\\Code_Journal_processes\\{decision_model_name}.oobn"
-
-decision_dom = load_model(decision_cc_name, decision_model_name, 10)
-decision_dom.compile()
-decision_dom.compress()
-
-decision_node_names = ["T1.Auto_Nitrogen", "T1.Set_point_Nitrogen", "T1.Systeme", "T1.Auto_Pump", "T1.Set_point_pump"]
-decision_nodes = [decision_dom.get_node_by_name(name) for name in decision_node_names]
-
-set_evidence(decision_dom.get_node_by_name(f"T1.{least_conflicting_state[0]}"), least_conflicting_state[1])
-
-
-set_standard_evidence_decision(decision_dom)
-
-decision_dom.propagate()
-best_decisions = np.array(find_best_decision(decision_dom, decision_nodes))
-
-
-
-
-Pressure=101000
-
-
 def adjust_decision_for_fault_control(pressure, scaling_factor, agent, transformer, decision, node):
     """
     Adjust the decision based on the output of the DRL agent for 'Fault control'.
@@ -161,58 +115,106 @@ def adjust_decision_for_fault_valve(pressure, scaling_factor, agent, decision, n
     Adjust the decision based on the output of the DRL agent for 'Fault valve'.
     """
     normalized_pressure = pressure / 101350
-    rl_value = np.round(scaling_factor.scale(agent.select_action([normalized_pressure]))[0],2)
-    value=float(decision[1])
-    index=node.get_state_index_from_value(value)
+    rl_value = np.round(scaling_factor.scale(agent.select_action([normalized_pressure]))[0], 2)
+    value = float(decision[1])
+    index = node.get_state_index_from_value(value)
 
-    uper_interval=node.get_state_value(index+1)
+    uper_interval = node.get_state_value(index + 1)
 
-    if rl_value < uper_interval and value<rl_value:
+    if rl_value < uper_interval and value < rl_value:
         decision[1] = rl_value
 
     return decision
 
-# Main Execution
-Pressure = 101000
 
-if least_conflicting_state[1] == "Fault control":
-    node=decision_dom.get_node_by_name(best_decisions[1][0])
-    best_decisions[1] = adjust_decision_for_fault_control(
-        Pressure, scaling_factor_tank, agent_DRL_S1_tank,
-        standard_tank, best_decisions[1], node
-    )
+# Main Execution - Conflict Detection
+#
 
-elif least_conflicting_state[1] == "Fault valve":
-    node=decision_dom.get_node_by_name(best_decisions[4][0])
-    best_decisions[4] = adjust_decision_for_fault_valve(
-        Pressure, scaling_factor_pump, agent_DRL_S2_pump,
-        best_decisions[4], node
-    )
+conflict_model_name = "model_Conflict"
+conflict_cc_name = f"C:\\Users\\jomie\\Documents\\GitHub\\Code_Journal_processes\\{conflict_model_name}.net"
 
+conflict_dom = Domain.parse_domain(conflict_cc_name )
 
-#print(best_decisions)
+conflict_dom.compile()
 
-decision_dom.delete()
+fault_node = conflict_dom.get_node_by_name("Fault")
+least_conflicting_state = find_least_conflicting_state(conflict_dom, fault_node)
+print(least_conflicting_state)
+
+conflict_dom.delete()
+
+#
+# Main Execution - Decision Making
 
 
+#
+if least_conflicting_state[1]!="none":
+    decision_model_name = "DID"
+    decision_cc_name = f"C:\\Users\\jomie\\Documents\\GitHub\\Code_Journal_processes\\{decision_model_name}.oobn"
 
-data = best_decisions
-# Iterate over the list and process the conditions
-for i in range(len(data)):
-    if data[i][0] == 'T1.Auto_Nitrogen' and data[i][1] == '0.0':
+    decision_dom = load_model(decision_cc_name, decision_model_name, 10)
+    decision_dom.compile()
+    decision_dom.compress()
 
-        set_point_nitrogen = data[i + 1][1] if i + 1 < len(data) else "Unknown"
-        print(f"Set the nitrogen flow to manual mode with a set point of {set_point_nitrogen}")
+    decision_node_names = ["T1.Auto_Nitrogen", "T1.Set_point_Nitrogen", "T1.Systeme", "T1.Auto_Pump", "T1.Set_point_pump"]
+    decision_nodes = [decision_dom.get_node_by_name(name) for name in decision_node_names]
 
-    if data[i][0] == 'T1.Systeme' and data[i][1] == '2.0':
-        print("Switch to backup system")
-
-    if data[i][0] == 'T1.Auto_Pump' and data[i][1] == '0.0':
-
-        set_point_pump = data[i + 1][1] if i + 1 < len(data) else "Unknown"
-        print(f"Set the pump power to auto with a set the point of {set_point_pump}")
+    set_evidence(decision_dom.get_node_by_name(f"T1.{least_conflicting_state[0]}"), least_conflicting_state[1])
 
 
+    set_standard_evidence_decision(decision_dom)
+
+    decision_dom.propagate()
+    best_decisions = np.array(find_best_decision(decision_dom, decision_nodes))
+
+
+
+
+    Pressure=101000
+
+
+    # Main Execution
+    Pressure = 101000
+
+    if least_conflicting_state[1] == "Fault control":
+        node=decision_dom.get_node_by_name(best_decisions[1][0])
+        best_decisions[1] = adjust_decision_for_fault_control(
+            Pressure, scaling_factor_tank, agent_DRL_S1_tank,
+            standard_tank, best_decisions[1], node
+        )
+
+    elif least_conflicting_state[1] == "Fault valve":
+        node=decision_dom.get_node_by_name(best_decisions[4][0])
+        best_decisions[4] = adjust_decision_for_fault_valve(
+            Pressure, scaling_factor_pump, agent_DRL_S2_pump,
+            best_decisions[4], node
+        )
+
+
+    #print(best_decisions)
+
+    decision_dom.delete()
+
+
+
+    data = best_decisions
+    # Iterate over the list and process the conditions
+    for i in range(len(data)):
+        if data[i][0] == 'T1.Auto_Nitrogen' and data[i][1] == '0.0':
+
+            set_point_nitrogen = data[i + 1][1] if i + 1 < len(data) else "Unknown"
+            print(f"Set the nitrogen flow to manual mode with a set point of {set_point_nitrogen}")
+
+        if data[i][0] == 'T1.Systeme' and data[i][1] == '2.0':
+            print("Switch to backup system")
+
+        if data[i][0] == 'T1.Auto_Pump' and data[i][1] == '0.0':
+
+            set_point_pump = data[i + 1][1] if i + 1 < len(data) else "Unknown"
+            print(f"Set the pump power to auto with a set the point of {set_point_pump}")
+
+else:
+    print("Monitoring")
 
 
 
