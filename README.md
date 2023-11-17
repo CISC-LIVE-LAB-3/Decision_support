@@ -9,7 +9,7 @@ The code primarily functions to identify faults within a system using the `model
 To adapt the model to specific scenarios or to modify its standard behavior, you can alter the functions `set_standard_evidence_conflict` and `set_standard_evidence_decision`. These functions are pivotal in setting the initial conditions and evidence for the model, thus influencing its decision-making process.
 
 ## **Requirements**
-- **Hugin API (Version 9.2 recommended)**
+- **Hugin API (Version 9.2 and higher)**
 - **Python environment**
 
 Please ensure that your system meets these requirements for the successful execution of the code.
