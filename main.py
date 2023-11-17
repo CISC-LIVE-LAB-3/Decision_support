@@ -51,7 +51,7 @@ def set_standard_evidence_conflict(domain):
         "Nitrogen_flow":0,
         # If auto is 1 it will detect first a control fault. If it 0 will detect valve fault
         "Auto":1,
-        # We select the Primary systeme
+        # We select the Primary system
         "Systeme": 1
     }
     for node_name, value in evidence_values.items():
